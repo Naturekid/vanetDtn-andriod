@@ -1,4 +1,4 @@
-package android.geosvr.dtn.servlib.conv_layers;
+﻿package android.geosvr.dtn.servlib.conv_layers;
 
 import java.io.IOException;
 import java.net.DatagramPacket;
@@ -73,6 +73,7 @@ public class Netw_layerInteractor implements Runnable {
 	 */
 	private Netw_layerInteractor() {
 		try {
+			//菜：指定DTN端口的socket
 			sock_interact_ = new DatagramSocket(DTNPORT);			
 			
 		} catch (Exception e) {
@@ -108,8 +109,62 @@ public class Netw_layerInteractor implements Runnable {
 				byte[] recvBuf = new byte[30];
 				DatagramPacket recvPacket = new DatagramPacket(recvBuf,
 						recvBuf.length);
+				//菜：收到的为其地址么？是什么类型的包？
 				sock_interact_.receive(recvPacket);
+				//菜
+				byte[] dstip = new byte[5];
+				byte[] avail = new byte[5];
+				byte[] srcip = new byte[5];
+				for (int k = 0; k < 4; k++) {
+					dstip[k] = recvBuf[k];
+					avail[k] = recvBuf[k + 4];
+					srcip[k] = recvBuf[k+8];
+				}
 
+				String dstipStr = IpHelper.ipbyte2ipstr(dstip);
+				String lastAvailStr = IpHelper.ipbyte2ipstr(avail);
+				String srcipStr = IpHelper.ipbyte2ipstr(srcip);
+				//菜：dstId格式为dtn://ip.wu.com
+				String dstId = IpHelper.ipstr2Idstr(dstipStr);
+				String lastAvailId = IpHelper.ipstr2Idstr(lastAvailStr);
+				String srcId = IpHelper.ipstr2Idstr(srcipStr);
+				
+				//获得本地ip
+				InetAddress local_addr = IpHelper.getLocalIpAddress();
+				String localIp = local_addr.toString().substring(1);
+				
+				//菜：Debug info
+				System.out.println("-------------------------------");
+				System.out.println("-------------------------------");
+				System.out.println("local:"+localIp);
+				System.out.println("dst:"+dstId+", lastAvail:"+lastAvailId+", src:"+srcId);
+				
+				//判断本节点是否是离断开链路最近的DTN节点以及是否是此段链路的第一个DTN节点
+				if(localIp.equals(lastAvailStr))//第一个DTN节点
+				{
+					//关闭dstID对应的直接连接，无需其他操作
+					shutdownDirectLink(dstId);
+					System.out.println("This is the first DTN node:"+localIp);
+				}
+				else if(localIp.equals(srcipStr))
+				{
+					System.out.println("This is the SRC DTN node:"+localIp);
+					//关闭dstID对应的直接连接。
+					shutdownDirectLink(dstId);
+					
+//					flash_pendingBundleState(dstId);
+					
+					add_link(lastAvailStr, lastAvailId);
+					try {
+						Thread.sleep(1000);
+					} catch (Exception e) {
+						// TODO: handle exception
+					}
+					add_routeEntry(dstId, lastAvailId);//必须放最后！我把add_route对外开放了，实际上可以作为事件！
+				}
+				//若均不是，不必进行操作，直接丢弃
+				
+/*wu原有的
 				byte[] dstip = new byte[5];
 				byte[] avail = new byte[5];
 				for (int k = 0; k < 4; k++) {
@@ -119,8 +174,14 @@ public class Netw_layerInteractor implements Runnable {
 
 				String dstipStr = IpHelper.ipbyte2ipstr(dstip);
 				String lastAvailStr = IpHelper.ipbyte2ipstr(avail);
+				//菜：dstId格式为dtn://ip.wu.com
 				String dstId = IpHelper.ipstr2Idstr(dstipStr);
 				String lastAvailId = IpHelper.ipstr2Idstr(lastAvailStr);
+				
+				//菜：Debug info
+				System.out.println("-------------------------------");
+				System.out.println("-------------------------------");
+				System.out.println("dst:"+dstId+";lastAvail:"+lastAvailId);
 				
 				//关闭dstID对应的直接连接。
 				shutdownDirectLink(dstId);
@@ -134,7 +195,7 @@ public class Netw_layerInteractor implements Runnable {
 					// TODO: handle exception
 				}
 				add_routeEntry(dstId, lastAvailId);//必须放最后！我把add_route对外开放了，实际上可以作为事件！
-
+*/
 				
 			} catch (SocketException e) {
 				// TODO Auto-generated catch block
@@ -244,7 +305,7 @@ public class Netw_layerInteractor implements Runnable {
 	 */
 	private void add_link(String lastAvailIpStr, String lastAvailId) {
 		
-		String ipcombostr = "/"+lastAvailIpStr+":"+"4556";
+		String ipcombostr = "/"+lastAvailIpStr+":"+"4556";//菜：4556是？
 		EndpointID lastEndid = new EndpointID(lastAvailId);
 		
 		BundleDaemon Daemon = BundleDaemon.getInstance();
@@ -260,7 +321,7 @@ public class Netw_layerInteractor implements Runnable {
 							ipcombostr, lastEndid);
 			
 			if (link == null) {
-				//log.d(TAG, "failed to create opportunistic link");
+				Log.d(TAG, "failed to create opportunistic link");
 				return;
 			}
 			link.lock().lock();
